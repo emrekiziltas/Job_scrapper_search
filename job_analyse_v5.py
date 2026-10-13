@@ -171,8 +171,9 @@ def agg_kpis(df: pd.DataFrame) -> dict:
 
 
 def agg_closing_counts(df: pd.DataFrame, n: int = 10) -> pd.Series:
-    return df["Closes"].value_counts().sort_index().head(n)
-
+    today = pd.Timestamp.now().normalize()
+    upcoming = df[df["Closes"] >= today]
+    return upcoming["Closes"].value_counts().sort_index().head(n)
 
 def agg_top_departments(df: pd.DataFrame, n: int = 10) -> pd.Series:
     return df["Department_ID"].value_counts().head(n)
@@ -463,10 +464,20 @@ def _gradient_hex(values: pd.Series, cmap) -> list[str]:
 
 def _job_table(sub_df: pd.DataFrame, title_col: str,
                header_colour: str, visible: bool) -> go.Table:
+    has_link = "Link" in sub_df.columns
+
+    titles_display = []
+    links = []
+    for _, row in sub_df.iterrows():
+        title_text = row[title_col]
+        link_val = row["Link"] if has_link and pd.notna(row["Link"]) else None
+        titles_display.append(f"🔗 {title_text}" if link_val else title_text)
+        links.append(link_val)
+
     return go.Table(
-        columnwidth=[0.50, 0.35, 0.15],
-       header=dict(
-            values=["<b>Job Title</b>", "<b>Department</b>", "<b>Date</b>"],
+        columnwidth=[0.55, 0.30, 0.15],
+        header=dict(
+            values=["<b>Job Title (Click to Open)</b>", "<b>Department</b>", "<b>Date</b>"],
             fill_color=header_colour,
             font=dict(color=C.TEXT_LIGHT, size=11),
             align="left",
@@ -474,18 +485,18 @@ def _job_table(sub_df: pd.DataFrame, title_col: str,
         ),
         cells=dict(
             values=[
-                sub_df[title_col].tolist(),
+                titles_display,
                 sub_df["Department"].tolist(),
                 sub_df.iloc[:, 2].dt.strftime("%d %b %Y").tolist(),
             ],
-            fill_color=[[C.SURFACE if i%2==0 else C.PRIMARY for i in range(len(sub_df))]],
+            fill_color=[[C.SURFACE if i % 2 == 0 else C.PRIMARY for i in range(len(sub_df))]],
             font=dict(color=C.TEXT_LIGHT, size=10),
-            align=["left","left","center"],
+            align=["left", "left", "center"],
             line_color=C.ACCENT,
         ),
+        customdata=links,   # <-- YENİ: satır bazlı link verisi
         visible=visible,
     )
-
 
 def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
                 open_browser: bool = True) -> None:
@@ -573,14 +584,24 @@ def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
         name="",
     ), row=2, col=1)
 
+    # CSV'de 'Link' sütunu varsa onu da DataFrame dilimine dahil et
+    target_cols = [title_col, "Department", "Closes"]
+    if "Link" in df.columns:
+        target_cols.append("Link")
+
     closes_top10 = (
         df[df["Closes"] >= pd.Timestamp.now()]
         .sort_values("Closes").head(10)
-        [[title_col, "Department", "Closes"]].copy()
+        [target_cols].copy()
     )
+
+    posted_cols = [title_col, "Department", "Posted"]
+    if "Link" in df.columns:
+        posted_cols.append("Link")
+
     posted_top10 = (
         df.sort_values("Posted", ascending=False).head(10)
-        [[title_col, "Department", "Posted"]].copy()
+        [posted_cols].copy()
     )
     fig.add_trace(_job_table(closes_top10, title_col, C.HIGHLIGHT, visible=True),  row=2, col=2)
     fig.add_trace(_job_table(posted_top10, title_col, C.BLUE,      visible=False), row=2, col=2)
@@ -609,7 +630,7 @@ def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
         showlegend=False,
         autosize=True,
         height=800,
-        margin=dict(t=10, b=10, l=40, r=40),
+        margin=dict(t=20, b=10, l=40, r=40),
         hoverlabel=dict(bgcolor=C.SURFACE, bordercolor=C.HIGHLIGHT,
                         font=dict(color=C.TEXT_LIGHT, size=12)),
     )
@@ -688,6 +709,7 @@ def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
     background: {C.PRIMARY};
     border-bottom: 1px solid {C.ACCENT};
     flex-shrink: 0;
+    margin-bottom: 20px;  
   }}
   .kpi-card {{
     flex: 1;
@@ -714,7 +736,7 @@ def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
   .kpi-label {{
     font-size: 11px;
     color: {C.TEXT_MUTED};
-    margin-top: 5px;
+    margin-top: 15px;
   }}
   
   /* Robust CSS Layout Framework to perfectly coordinate HTML panels with the Plotly Grid */
@@ -740,6 +762,7 @@ def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
     padding: 0 40px;
     z-index: 10;
     pointer-events: none; /* Allows chart hovering beneath empty grid columns */
+
   }}
 
   .grid-header-cell {{
@@ -750,6 +773,7 @@ def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
     padding-bottom: 8px;
     pointer-events: auto; /* Restores interactive behavior on the actual control area */
     flex-wrap: nowrap;
+ 
   }}
 
   .table-title {{
@@ -830,6 +854,19 @@ def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
   {plotly_div}
   </div>
 </div>
+<script>
+  (function() {{
+    var gd = document.querySelector('.plotly-graph-div');
+    if (!gd) return;
+    gd.on('plotly_click', function(data) {{
+      var pt = data.points[0];
+      if (pt.data && pt.data.type === 'table' && Array.isArray(pt.data.customdata)) {{
+        var link = pt.data.customdata[pt.pointNumber];
+        if (link) window.open(link, '_blank');
+      }}
+    }});
+  }})();
+</script>
 
 <script>
   function switchTable(mode) {{
@@ -864,19 +901,28 @@ def render_html(df: pd.DataFrame, output_path: str = "cambridge_dashboard.html",
   }})();
 </script>
 </body>
-</html>"""
+</html>
+"""
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(full_html)
-    print(f"HTML saved → {output_path}")
+    out_p = Path(output_path)
+    out_p.write_text(full_html, encoding="utf-8")
+    print(f"HTML saved → {out_p.resolve()}")
 
     if open_browser:
         import webbrowser
-        webbrowser.open(Path(output_path).absolute().as_uri())
+        webbrowser.open(out_p.absolute().as_uri())
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Test Execution Block
+# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    csv_file = resolve_csv_path("cambridge_jobs_archive.csv")
-    df_data  = load_data(csv_file)
-    render_png(df_data)
-    render_html(df_data, open_browser=True)
+    try:
+        csv_file = resolve_csv_path()
+        data = load_data(csv_file)
+
+        # Her iki render motorunu da arka arkaya tetikle
+        render_png(data)
+        render_html(data, open_browser=True)
+    except Exception as e:
+        print(f"[Error] Dashboard oluşturulamadı: {e}")

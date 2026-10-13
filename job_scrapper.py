@@ -162,17 +162,19 @@ def save_to_csv(new_data, main_file='cambridge_jobs_archive.csv'):
 
             df_list.append(temp)
 
+    old_total_records = sum(len(df) for df in df_list) if df_list else 0
+
     df_list.append(new_df)
 
     final_df = pd.concat(df_list, ignore_index=True)
     final_df = final_df.drop_duplicates(subset=['Job_ID'], keep='first')
-
+    added_records_count = len(final_df) - old_total_records
     try:
         os.system("taskkill /f /im excel.exe /t >nul 2>&1")
         final_df.to_csv(main_file, index=False, encoding='utf-8-sig')
         print(f"\nBAŞARILI: '{main_file}' güncellendi. "
-              f"Toplam kayıt: {len(final_df)}")
-
+           
+        f"Toplam kayıt: {len(final_df)} | Yeni eklenen kayıt: {added_records_count}")
         for f in glob.glob('cambridge_jobs_[0-9]*.csv'):
             os.remove(f)
 

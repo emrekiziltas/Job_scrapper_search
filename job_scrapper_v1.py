@@ -84,6 +84,11 @@ def run_scraper():
 
     jobs_list = []
     rows = table.find_all('tr')[1:]
+    print(len(rows), "satır bulundu")
+    for r in rows[:3]:
+        print([c.get_text(strip=True)[:25] for c in r.find_all('td')],
+              r.find('a')['href'] if r.find('a') else None)
+    print("EA50199" in response.text)
 
     for i, row in enumerate(rows):
         cols = row.find_all('td')

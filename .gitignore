@@ -1,0 +1,7 @@
+﻿cambridge_dashboard.html
+cambridge_dashboard.png
+cambridge_jobs_archive.csv
+__pycache__/
+*.pyc
+.venv/
+.idea/
